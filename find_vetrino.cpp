@@ -1,7 +1,7 @@
 // find_vetrino.cpp : soluzione per scorrere una colonna acquisita e individuare dove inizia e termina il vetrino per
 // ridurre il tempo e la memoria necessaria per l'acquisizione.
 //L'algoritmo si basa sul fatto che quando inizia e termina il vetrino possiamo trovare nell'immagine uno spesso bordo nero, mentre
-//il resto delle foto sono per lo più bianche a causa della luce riflessa.
+//il resto delle foto sono per lo piu bianche a causa della luce riflessa.
 //Utilizzo quindi questi riferimenti per individuare la zona dove inizia il vetrino e la zona dove termina.
 //L'algoritmo restituisce le coordinate che potranno poi essere usate come parmetri di input per l'acquisizione 
 //col microscopio.
@@ -34,7 +34,7 @@ int main() {
     path imagepath; 
     string path;
 
-    Mat img; //parto da questa posizione perchè le righe precedenti non sono valide per posizionare il vetrino
+    Mat img; //parto da questa posizione perche le righe precedenti non sono valide per posizionare il vetrino
     int i = MINROW;
     int blackPixel, start = -1, end = -1;
     do {
@@ -72,7 +72,7 @@ int main() {
             cout << "La colonna di inizio vetrino e' " << start << endl;
         }
         else if (blackPixel > 30 && start > 0 && start != i - STEPx5) { //alla seconda colonna nera finisce il vetrino
-            //includo la terza condizione perché il nero potrebbe essere diviso tra 2 immagini all'inizio
+            //includo la terza condizione perche il nero potrebbe essere diviso tra 2 immagini all'inizio
             end = i;
             cout << "La colonna di fine vetrino e' " << end << endl;
             return 1;
