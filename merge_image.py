@@ -16,8 +16,8 @@ def main(dir):
     firstImg = os.listdir(new_dir)[0]
     path = os.path.join(new_dir, firstImg)
     width, height = Image.open(path).size
-    totalWidth = width * 11 #valore assoluto che poi dovrò cambiare
-    totalHeight = height * 11 #come sopra
+    totalWidth = (width) * 14 #valore assoluto che poi dovrò cambiare
+    totalHeight = height * 10 #come sopra
 
     new_img = Image.new("RGB", (totalWidth, totalHeight), "white")    # "white" e' il colore di sfondo
 
@@ -33,7 +33,7 @@ def main(dir):
         new_img.paste(img, (forCol, forRow))
 
         i += 1
-        if(i % 11 == 0):
+        if(i % 10 == 0):
             i = 0
             forCol += width
             forRow = 0
