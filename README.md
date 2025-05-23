@@ -12,3 +12,9 @@ debugCol -> contiene le immagini di una colonna per vedere dove inizia il vetrin
 biancoMosaic -> immagine acquisita con mosaic del vetrino bianco 
 
 coloratoMosaic -> immagine acquisita con mosaic del vetrino colorato
+
+find_vetrino -> contiene l'algoritmo funzionante per indviduare la riga di inizio e fine del vetrino
+
+match_images -> contiene l'algoritmo per unire le immagini acquisite col microscopio, funziona
+
+merge_image -> algoritmo per matchare immagine colorata e immagine bianca, in sviluppo
