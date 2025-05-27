@@ -19,8 +19,8 @@ coloratoMosaic -> immagine acquisita con mosaic di LabSpec6 del vetrino colorato
 
 find_vetrino -> contiene l'algoritmo funzionante per indviduare la riga di inizio e fine del vetrino
 
-match_images -> contiene l'algoritmo per unire le immagini acquisite col microscopio, funziona
+match_images -> algoritmo per matchare immagine colorata e immagine bianca, in sviluppo
 
-merge_image -> algoritmo per matchare immagine colorata e immagine bianca, in sviluppo
+merge_image -> contiene l'algoritmo per unire le immagini acquisite col microscopio, funziona
 
 acqBianco1_unita, acqBianco2_unita, acqColorato1_unita, acqColorato2_unita -> contengono i mosaic creati con lo script merge_image
