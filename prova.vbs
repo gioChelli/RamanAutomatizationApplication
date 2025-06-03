@@ -570,8 +570,6 @@ do
 	SpectrumID = LabSpec.GetAcqID() 'è una funzione che vediamo tra poco
 Loop Until SpectrumID > 0
 
-
-
 'AddID : aggiunge un data ID da salvare, tutti i dati salvati con questa funzione saranno salvati nello stesso file
 long AddID(long ID)
  
@@ -586,7 +584,6 @@ LabSpec.AddID LabSpec.Load("C:est2.tsf")
 LabSpec.Save 0, "C:saveall.tfs", "tfs" 'vediamo dopo il comando save
 
 
-
 'AutoFocus : fa un AutoFocus usando la corrente configurazone di LabSpec
 long AutoFocus(long Mode)
 
@@ -598,7 +595,7 @@ long AutoFocus(long Mode)
 '4 : GET_AUTOFOCUS_STATE (ritorna 0 quando è settato a OFF, 1 quando è ON)
 '5 : AUTOFOCUS_ENABLE (abilita l'autofocus)
 '6 : AUTOFOCUS_DISABLE (disabilita l'autofocus)
-'10: LASER_AUTOFOCUS (activa l'autofocus basato su laser)
+'10: LASER_AUTOFOCUS (attiva l'autofocus basato su laser)
 '11: RAMAN_AUTOFOCUS (Attiva l'autofocus basato su Raman)
 '12: VIDEO_AUTOFOCUS (attiva l'autofocus per video)
 
@@ -1019,6 +1016,8 @@ long MoveMotor(LPCTSTR MotorName, double PositionValue, LPCTSTR PositionName,
 	'"YL": motore della direzione di scena (stage attivo)
 	'"XT": motore della direzione di scena (device di scanning attivo)
 	'"YT": motore della direzione di scena (device di scanning attivo)
+	'"Z" : motore z
+	'"Laser" : motore laser
 
 'PositionValue : Valore da raggiungere
 'PositionName : solo per motori con posizioni nominate (microscopi,...)
@@ -1037,8 +1036,6 @@ long MoveMotor(LPCTSTR MotorName, double PositionValue, LPCTSTR PositionName,
 
 'Valore di ritorno: >0 MoveID, -1 fallimento
 'se VALUE_TO_STEP ritorna Motor Step
-
-
 
 'Paint : permette di disegnare una text box in una finestra collegato da una 
 'freccia a uno spettro. è disponibile anche l'esportazione a Windows Meta file
@@ -1068,8 +1065,6 @@ long Paint(long Mode, long SpectrumID, float Value, double PosX, double PosY,
 long Pause(double Time)
 
 'Time : Pause Time(ms)
-
-
 
 'Print : disegna l'area Attiva
 long Print(long Mode)

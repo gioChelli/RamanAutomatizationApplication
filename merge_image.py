@@ -13,17 +13,35 @@ def main(dir):
         return -1
     
     #numImg = len(os.listdir(new_dir))
-    firstImg = os.listdir(new_dir)[0]
+    listImg = natsorted(os.listdir(new_dir))
+    firstImg = listImg[0]
+    coordinate = firstImg.split("_")
+    COLUMN = int(coordinate[0])
+    
+    NUM_COLUMN = 0
+    for im in listImg:
+        coordinate = im.split("_")
+        if int(coordinate[0]) == COLUMN:
+            NUM_COLUMN += 1
+        else:
+            break
+            
+    NUM_ROW = 1
+    for im in listImg:
+        coordinate = im.split("_")
+        if int(coordinate[0]) > COLUMN:
+            COLUMN = int(coordinate[0])
+            NUM_ROW += 1
+            
     path = os.path.join(new_dir, firstImg)
     width, height = Image.open(path).size
-    totalWidth = (width) * 14 #valore assoluto che poi dovrò cambiare
-    totalHeight = height * 10 #come sopra
+    totalWidth = width * NUM_ROW 
+    totalHeight = height * NUM_COLUMN
 
     new_img = Image.new("RGB", (totalWidth, totalHeight), "white")    # "white" e' il colore di sfondo
 
-    listImg = natsorted(os.listdir(new_dir))
     i = 0
-    forCol = 0 
+    forCol = 0
     forRow = 0
     
     for file in listImg:
