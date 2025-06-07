@@ -287,7 +287,7 @@ def main(img1, img2): #i due argomenti sono le immagini dei vetrini
         if(distance < resBest):
             resBest = distance
             bestRot = i
-            
+        print(i, distance)
         i = i + 1
 
     #print(resBest)
