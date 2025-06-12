@@ -1,9 +1,17 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Form
 import uvicorn
+from pydantic import BaseModel
 from enum import Enum
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
+from PIL import Image
+from natsort import natsorted  # per ordinare immagini
+import os
+import os.path
+
+WHITE_COLOR = 255
+EDGE_MIN_PIXEL_DIMENSION = 10
 
 class Pattern:
     def __init__(self):
@@ -11,7 +19,6 @@ class Pattern:
         self.startColumnPattern = -1
         self.endRowPattern = -1
         self.endColumnPattern = -1
-
 
 class Status:
     _instance = None
@@ -29,7 +36,6 @@ class Status:
             self._initialized = True
             self.startGlass = -1
             self.endGlass = -1
-            self.pattern = []
     
     def glassStartFounded(self, row):
         self.glassStartFound = True
@@ -45,8 +51,7 @@ class Status:
         self._initialized = True
         self.startGlass = -1
         self.endGlass = -1
-        self.pattern = []
-        print("resetto")
+
 
 app = FastAPI(
     title="Scannerizzazione immagini LabSpec6",
@@ -61,43 +66,110 @@ class ResultImageProcessing(Enum):
     GLASS = 2
     EMPTY = 3
 
+class GlassType(Enum):
+    TWO_COLORED = 0
+    TWO_WHITE = 1
+    ONE_COLORED = 2
+    ONE_WHITE = 3
+    ONE_BOTH = 4
+    EMPTY = 5
+
+class PathPayload(BaseModel):
+    path: str
+
 def searchEdge(img):
+
+    stato = ResultImageProcessing.EMPTY
     
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    matrix1 = np.ones(img_gray.shape, dtype="uint8") * 60 
-    img_gray = cv2.subtract(img_gray, matrix1)
     _, binaryImg = cv2.threshold(img_gray, 127, 255, cv2.THRESH_BINARY_INV)
+    
+    height, width = binaryImg.shape
+    approxWidth = width / 10 * 9 # approssimazione della larghezza per trovare le linee anche se qualche pixel per errore è diverso
+    startRow = -1 #riga del pixel di inizio del vetrino
 
+    dst = cv2.Canny(binaryImg, 25, 100, None, 3)
+    lines = cv2.HoughLinesP(dst, 1, np.pi / 180, 30, minLineLength = approxWidth, maxLineGap=10)
+
+    if lines is not None: #approccio che funziona se non c'e un vetrino sopra
+        
+        stato = ResultImageProcessing.GLASS
+        #print("linea trovata")
+        x1, y1, x2, y2 = lines[0][0]
+        startRow = y1
+    else:
+        pixelYnum = 0
+        for i in range(height): #metodo per vetrini con vetrino sovrapposto
+            n = 0
+            for x in range(width):
+                if binaryImg[i][x] == WHITE_COLOR:
+                    n += 1
+            if n > (approxWidth):
+                pixelYnum += 1
+                if startRow  == -1:
+                    startRow = i
+        print(pixelYnum)
+        if pixelYnum > EDGE_MIN_PIXEL_DIMENSION and pixelYnum < height / 2:
+            stato = ResultImageProcessing.GLASS
+        
     #plt.figure(figsize=[15,8])
     #plt.subplot(); plt.axis('off'); plt.imshow(binaryImg, cmap='gray'); plt.title("Imaged sent") # cambia img o binaryImg in base al metodo da usare
     #plt.show()
-    
-    height, width = binaryImg.shape
-    startRow = -1 #riga del pixel di inizio del vetrino
-    pixelYnum = 0
-    for i in range(height):
-        n = 0
-        for x in range(width):
-            if binaryImg[i][x]==255:
-                n += 1
-        if n > (width*3/4):
-            pixelYnum += 1
-            if startRow  == -1:
-                startRow = i
 
-    if pixelYnum > 5 and pixelYnum < 30:
-        stato = ResultImageProcessing.GLASS
+    if stato == "GLASS":
         return {
             'result': stato.name,
-            'row': startRow * 820 / binaryImg.shape[1]
+            'row': startRow * 820 / height
         }
     else:
-        stato = ResultImageProcessing.EMPTY
         return {
             'result': stato.name,
             'row': -1
         }
     
+def mergeImages(path):
+    
+    listImg = sorted(os.listdir(path), key=lambda name: (int(name.split("_")[1].split(".")[0]), int(name.split("_")[0])))
+    firstImg = listImg[0]
+    START_Y = int(firstImg.split("_")[0])
+    START_X = int(firstImg.split("_")[1].split(".")[0])
+    
+    NUM_X = 0
+    NUM_Y = 0
+    for im in listImg:
+        y = int(im.split("_")[0])
+        x = int(im.split("_")[1].split(".")[0])
+        if x == START_X:
+            NUM_X += 1
+        if y == START_Y:
+            NUM_Y += 1
+            
+    new_path = os.path.join(path, firstImg)
+    width, height = Image.open(new_path).size
+    totalWidth = width * NUM_X 
+    totalHeight = height * NUM_Y
+
+    new_img = Image.new("RGB", (totalWidth, totalHeight), "white")    # "white" e' il colore di sfondo
+    
+    row = 0
+    col = 0
+    for file in listImg:
+        imgPath = os.path.join(path, file)
+        img = Image.open(imgPath)
+
+        x_idx = col * width
+        y_idx = row * height
+        new_img.paste(img, (x_idx, y_idx))
+
+        col += 1
+        if col == NUM_X:
+            col = 0
+            row += 1
+    
+    full_path = os.path.join(path, "img_unita.jpg")
+    new_img.save(full_path)
+
+    return full_path
 
 #metodo che trova il pixel esatto di inizio del vetrino e fine del vetrino
 #una volta trovato l'inizio del vetrino il motore di LabSpec6 si deve spostare in fondo e 
@@ -121,73 +193,42 @@ async def edgeImage(file : UploadFile = File(...)):
     print(res["result"])
     row = int(file.filename.split(".")[0])
     res["row"] = res["row"] + row
-    print(searchStatus.glassStartFound)
     
     if not searchStatus.glassStartFound:
         
         if res["result"] == "GLASS":
-            print("Trovato inizio")
-            searchStatus.glassStartFounded(res["row"])
-        
+            print(res["row"])
+            searchStatus.glassStartFounded(res["row"])  
     elif not searchStatus.glassEndFound:
         
-        if res["result"] == "EMPTY":
+        if res["result"] == "GLASS":
+            print(res["row"])
             searchStatus.glassEndFounded(res["row"])
        
     return res
     
-#post per ricevere immagini che cercano punti dove e presente l'immagine
-@app.post("/patternImage", status_code=201)
-async def patternImage(file : UploadFile = File(...)):
-    if(file.content_type != "image/jpeg"):
-        stato = ResultImageProcessing.ERROR
-        return {
-            'result': stato.name,
-            'row' : -1
-        }
-    
-    searchStatus = Status()
-    
-    array = file.filename.split("_")
-    print(array)
-    x = int(array[0])
-    y = int(file.filename.split(".")[0])
-
-    byteImg = await file.read()
-    npImg = np.frombuffer(byteImg, np.uint8)
-    img = cv2.imdecode(npImg, cv2.IMREAD_COLOR)
-    img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    _, binaryImg = cv2.threshold(img_gray, 127, 255, cv2.THRESH_BINARY_INV)
-    _, contours = cv2.findContours(binaryImg, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    filter_contours = []
-    for cnt in contours:
-        first = cnt[0][0]
-        last = cnt[-1][0]
-        if np.linalg.norm(np.array(first) - np.array(last)) < 1.0:
-            filter_contours.append(cnt)
-
-    img = np.zeros(binaryImg.shape, dtype="uint8")
-    if(len(filter_contours)):
-        cv2.drawContours(img, filter_contours, -1, 255, 2)
-    plt.figure(figsize=[15,8])
-    plt.subplot(); plt.axis('off'); plt.imshow(binaryImg, cmap='gray'); plt.title("Imaged sent") # cambia img o binaryImg in base al metodo da usare
-    plt.show()
-
-    stato = ResultImageProcessing.ERROR
-    return { 
-        'result': stato.name,
-        'row' : -1,
-        'column': -1
-    }
-    
 @app.get("/startAcquisition", status_code=200)
 async def startAcquisition():
     searchStatus = Status()
-    print("qua")
+    print("nuova acquisizione")
     searchStatus.newAcquisition()
+    return {"status": "boh"}
+
+@app.post("/endAcquisition", status_code=201)
+async def endAcquisition(payload: PathPayload = Form(...)):
+    
+    full_path = mergeImages(payload.path)
+
+    img = cv2.imread(full_path, cv2.IMREAD_COLOR)
+    if img is None:
+        return {"status":"failed"}
+
+    plt.figure(figsize=[15,8])
+    plt.subplot(); plt.axis('off'); plt.imshow(img, cmap='gray'); plt.title("Imaged sent") # cambia img o binaryImg in base al metodo da usare
+    plt.show()
+
+    return {"status": "done"}
      
 #Start server with uvicorn
 if __name__ == "__main__":
-    uvicorn.run("server_scan_image:app", host="0.0.0.0", port=5500, reload=True, timeout_keep_alive=0, log_level="info")
+    uvicorn.run("server_scan_image:app", host="0.0.0.0", port=5500, reload=False, timeout_keep_alive=0, log_level="info")
