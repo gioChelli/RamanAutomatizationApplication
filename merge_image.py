@@ -1,5 +1,4 @@
 from PIL import Image
-from natsort import natsorted  # per ordinare immagini
 import os
 import os.path
 import sys
@@ -49,12 +48,12 @@ def main(dir):
             col = 0
             row += 1
     
-    full_path = os.path.join(new_dir, "img_unita.jpg")
+    full_path = os.path.join(new_dir, "img_unita.jpg") # questo da inserire come iperparametro da dare nel file di configurazione di LabSpec6
     new_img.save(full_path)
     return 0
 
 
 if len(sys.argv) == 2:
-    main(sys.argv[1])
+    main(sys.argv[1]) #qua probabilmente inserire altro parametro che mi posso far dare a inizio acquisizione
 else:
     print("Uso:", sys.argv[0], "nome_directory")

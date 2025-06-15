@@ -6,12 +6,14 @@ import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 from PIL import Image
-from natsort import natsorted  # per ordinare immagini
+import math
 import os
 import os.path
+import subprocess
 
 WHITE_COLOR = 255
-EDGE_MIN_PIXEL_DIMENSION = 10
+EDGE_MIN_PIXEL_DIMENSION = 20
+PATH =r"C:\\Users\Giorgio"
 
 class Pattern:
     def __init__(self):
@@ -85,18 +87,30 @@ def searchEdge(img):
     _, binaryImg = cv2.threshold(img_gray, 127, 255, cv2.THRESH_BINARY_INV)
     
     height, width = binaryImg.shape
-    approxWidth = width / 10 * 9 # approssimazione della larghezza per trovare le linee anche se qualche pixel per errore è diverso
+    approxWidth = width / 5 * 3 # approssimazione della larghezza per trovare le linee anche se qualche pixel per errore è diverso
     startRow = -1 #riga del pixel di inizio del vetrino
-
-    dst = cv2.Canny(binaryImg, 25, 100, None, 3)
-    lines = cv2.HoughLinesP(dst, 1, np.pi / 180, 30, minLineLength = approxWidth, maxLineGap=10)
+    
+    dst = cv2.Canny(img_gray, 50, 150, None, 3)
+    lines = cv2.HoughLinesP(dst, 1, np.pi / 180, 10, minLineLength = 50, maxLineGap=20)
 
     if lines is not None: #approccio che funziona se non c'e un vetrino sopra
+        print(len(lines))
+        for line in lines:
+            x1, y1, x2, y2 = line[0]
+            dx = x2 - x1
+            dy = y2 - y1
+    
+            if dx == 0:
+                angle_deg = 90  # linea verticale
+            else: #calcola angolo con asse x
+                angle_rad = math.atan2(dy, dx)
+                angle_deg = abs(math.degrees(angle_rad))
         
-        stato = ResultImageProcessing.GLASS
-        #print("linea trovata")
-        x1, y1, x2, y2 = lines[0][0]
-        startRow = y1
+            if angle_deg < 30 or angle_deg > 150: #tolleranza, definire costanti
+            
+                stato = ResultImageProcessing.GLASS
+                print("linea trovata")
+                startRow = y1
     else:
         pixelYnum = 0
         for i in range(height): #metodo per vetrini con vetrino sovrapposto
@@ -206,26 +220,47 @@ async def edgeImage(file : UploadFile = File(...)):
             searchStatus.glassEndFounded(res["row"])
        
     return res
+
+#post per ricevere immagini che cercano punti dove e presente l'immagine
+@app.post("/patternImage", status_code=201)
+async def patternImage(file : UploadFile = File(...)):
+    if(file.content_type != "image/jpeg"):
+        stato = ResultImageProcessing.ERROR
+        return {
+            'result': stato.name,
+            'row' : -1
+        }
+
+    byteImg = await file.read()
+    npImg = np.frombuffer(byteImg, np.uint8)
+    img = cv2.imdecode(npImg, cv2.IMREAD_COLOR)
+
+    filepath = os.path.join(PATH, file.filename)
+    cv2.imwrite(filepath, img)
+    #plt.figure(figsize=[15,8])
+    #plt.subplot(); plt.axis('off'); plt.imshow(binaryImg, cmap='gray'); plt.title("Imaged sent") # cambia img o binaryImg in base al metodo da usare
+    #plt.show()
+
+    stato = ResultImageProcessing.EMPTY
+    return { 
+        'result': stato.name,
+        'row' : -1,
+        'column': -1
+    }
     
-@app.get("/startAcquisition", status_code=200)
+@app.patch("/startAcquisition", status_code=200)
 async def startAcquisition():
     searchStatus = Status()
     print("nuova acquisizione")
     searchStatus.newAcquisition()
-    return {"status": "boh"}
+    return {
+        "status": "OK"
+    }
 
-@app.post("/endAcquisition", status_code=201)
-async def endAcquisition(payload: PathPayload = Form(...)):
-    
-    full_path = mergeImages(payload.path)
+@app.patch("/endAcquisition", status_code=200)
+async def endAcquisition():
 
-    img = cv2.imread(full_path, cv2.IMREAD_COLOR)
-    if img is None:
-        return {"status":"failed"}
-
-    plt.figure(figsize=[15,8])
-    plt.subplot(); plt.axis('off'); plt.imshow(img, cmap='gray'); plt.title("Imaged sent") # cambia img o binaryImg in base al metodo da usare
-    plt.show()
+    subprocess.run(["python", "merge_immage.py", PATH])
 
     return {"status": "done"}
      

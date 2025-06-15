@@ -103,7 +103,7 @@ def main(path_img):
                 nanoGPS = approx
                 (x2, y2, w2, h2) = (x1,y1,w1, h1) #qui ho le coordinate del NanoGPS che poi posso usare come riferimento
         elif(len(i) > PATTERN_MIN_DIMENSION and len(i) < (bitmapImg.shape[1])):
-            filter_contours.append(i)
+            filter_contours.append(approx)
     
     #in base ai risultati definisco il tipo di vetrino che ho trovato
     if len(filter_contours) == 2 and glass == "ONE COLORED":
@@ -135,6 +135,7 @@ def main(path_img):
     centr = [[] for _ in final_contours]
     idx = 0
     for i in final_contours:
+
         final_img[idx] = np.zeros(bitmapImg.shape, dtype=np.uint8)
         final_img[idx] = cv2.drawContours(final_img[idx], i, -1, 255, 15)
         coords = cv2.findNonZero(final_img[idx])
@@ -152,61 +153,116 @@ def main(path_img):
         centr[idx] = compute_center(i)
         #final_img[idx] = cv2.circle(final_img[idx], centr[idx], radius=30, color=255, thickness=-1)
         idx += 1
-    
+
     bitmapImg = None
+    
+    bestRot = 0
+    i = 0
+    sc = cv2.createShapeContextDistanceExtractor()
+    while i < 360:
+        
+        centr = compute_center([filter_contours[1]])
+        centr = tuple(map(int, centr))
+        rotMatrix = cv2.getRotationMatrix2D(centr, i, 1.0)
+        rotated_contours = cv2.transform(filter_contours[1], rotMatrix)
+        
+        distance = sc.computeDistance(filter_contours[0], rotated_contours)
+        
+        if(distance < resBest):
+            resBest = distance
+            bestRot = i
+        print(i, distance)
+        i = i + 1
 
-    #plt.figure(figsize=[15,8])
-    #plt.subplot(121); plt.axis('on'); plt.imshow(final_img[0], cmap="gray"); plt.title("Not colored")
-    #plt.subplot(122); plt.axis('on'); plt.imshow(final_img[1], cmap="gray"); plt.title("Colored")
-    #plt.show()
+    img1 = np.zeros(img1.shape, dtype=np.uint8)
+    img2 = np.zeros(img2.shape, dtype=np.uint8) 
+    cv2.drawContours(img1, filter_contours[0], -1, 255, 3)
+    cv2.drawContours(img1, filter_contours[1], -1, 255, 3)
 
-    kpSIFT = [[] for _ in final_img]
-    desSIFT = [[] for _ in final_img]
+    #cv2.circle(img1, (cx1, cy1), radius=30, color=255, thickness=-1)
+    #cv2.circle(img2, (cx2, cy2), radius=30, color=255, thickness=-1)
+
+    plt.figure(figsize=[15,8])
+    plt.subplot(121); plt.axis('on'); plt.imshow(final_img[0], cmap="gray"); plt.title("Not colored")
+    plt.subplot(122); plt.axis('on'); plt.imshow(final_img[1], cmap="gray"); plt.title("Colored")
+    plt.show()
+
+    if len(final_img) == 2:
+        match_SIFT(final_img)
+    
+    #cv2.imwrite("SIFT_result.jpg", img3)
+    #cv2.imwrite("ORB_result.jpg", img4)
+
+    print(glass)
+    return 0
+
+def match_ORB(final_img):
     kpORB = [[] for _ in final_img]
     desORB = [[] for _ in final_img]
-    kpAKAZE = [[] for _ in final_img]
-    desAKAZE = [[] for _ in final_img]
+
     idx = 0
     for i in final_img: 
-        kpSIFT[idx], desSIFT[idx] = compute_SIFT_keypoints(i)
         kpORB[idx], desORB[idx] = compute_ORB_keypoints(i)
-        kpAKAZE[idx], desAKAZE[idx] = compute_AKAZE_keypoints(i)
         idx += 1
 
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-    matches = bf.match(desAKAZE[0], desAKAZE[1])
-    matches = sorted(matches, key=lambda x: x.distance)
-    img_matches = cv2.drawMatches(final_img[0], kpAKAZE[0], final_img[1], kpAKAZE[1], matches[:20], None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+    matches2 = bf.match(desORB[0],desORB[1])
 
-    if len(final_img) == 2:
+    matches2 = sorted(matches2, key = lambda x:x.distance)
+    img4 = cv2.drawMatches(final_img[0],kpORB[0],final_img[1],kpORB[1],matches2[:10],None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
 
-        bf = cv2.BFMatcher()
-        matches1 = bf.knnMatch(desSIFT[0],desSIFT[1],k=2)
-
-        bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-        matches2 = bf.match(desORB[0],desORB[1])
+    plt.imshow(img4),plt.show()
     
-    # Apply ratio test
+def match_SIFT(final_img):
+    kpSIFT = [[] for _ in final_img]
+    desSIFT = [[] for _ in final_img]
+
+    idx = 0
+    for i in final_img: 
+        kpSIFT[idx], desSIFT[idx] = compute_SIFT_keypoints(i)
+        idx += 1
+
+    bf = cv2.BFMatcher()
+    matches1 = bf.knnMatch(desSIFT[0],desSIFT[1],k=2)
+
     good = []
     for m,n in matches1:
         if m.distance < 0.85 * n.distance:
             good.append([m])
- 
-    # cv.drawMatchesKnn expects list of lists as matches.
-    img3 = cv2.drawMatchesKnn(final_img[0],kpSIFT[0],final_img[1],kpSIFT[1],good,None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
- 
+
+    img3 = cv2.drawMatchesKnn(final_img[0],kpSIFT[0],final_img[1],kpSIFT[1],good[:50],None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
     plt.imshow(img3),plt.show()
-    cv2.imwrite("SIFT_result.jpg", img3)
 
-    matches2 = sorted(matches2, key = lambda x:x.distance)
+def match_AKAZE(final_img):
+    kpAKAZE = [[] for _ in final_img]
+    desAKAZE = [[] for _ in final_img]
 
-    img4 = cv2.drawMatches(final_img[0],kpORB[0],final_img[1],kpORB[1],matches2[:10],None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+    idx = 0
+    for i in final_img: 
+        kpAKAZE[idx], desAKAZE[idx] = compute_AKAZE_keypoints(i)
+        idx += 1
 
-    plt.imshow(img4),plt.show()
-    cv2.imwrite("ORB_result.jpg", img4)
+    #bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+    #matches = bf.match(desAKAZE[0], desAKAZE[1])
+    #matches = sorted(matches, key=lambda x: x.distance)
+    #img5 = cv2.drawMatches(final_img[0], kpAKAZE[0], final_img[1], kpAKAZE[1], matches[:20], None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+    #media_distanza = sum(m.distance for m in matches[:20]) / 20
+    
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
+    raw_matches = bf.knnMatch(desAKAZE[0], desAKAZE[1], k=2)
 
-    print(glass)
-    return 0
+    # Lowe's ratio test
+    good = []
+    for m, n in raw_matches:
+        if m.distance < 0.75 * n.distance:
+            good.append(m)
+
+    # Ora puoi usare good[:20]
+    img_matches = cv2.drawMatches(final_img[0], kpAKAZE[0], final_img[1], kpAKAZE[1], good[:20], None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+    plt.imshow(img_matches), plt.show()
+
+    #plt.imshow(img5),plt.show()
+    
 
 def contour_distance(c1, c2):
     d = cdist(c1.reshape(-1, 2), c2.reshape(-1, 2))
