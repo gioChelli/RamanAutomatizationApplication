@@ -14,6 +14,8 @@ Dim lastX, lastY
 Dim ErrorConnection : ErrorConnection = False
 Dim configFile : configFile="C:Users\RAMAN\Desktop\GiorgioChelliScripts\configFile.txt"
 Dim path, pathCol, serverName, PORT
+Dim LabSpec
+Set LabSpec = CreateObject("LabSpec.Application")
 
 Const MOTOR_VALUE = 0
 Const MOTOR_ORIGIN = 5

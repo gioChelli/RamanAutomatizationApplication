@@ -39,7 +39,6 @@ class tkinter:
         self.img2 = None
         tk.Label(self.tab1, text="Seleziona campioni da confrontare", fg = "red", font=("Helvetica", 16)).grid(row=1, columnspan=2)
 
-        tk.Label(self.tab1, text="").grid(row=4, pady=4)
         tk.Button(self.tab1, text="Scegli campione 1", command=lambda:self.open_file(1)).grid(row=2, column = 0)
         tk.Label(self.tab1, text="Nessun Path selezionato al momento", anchor='w').grid(row=2, column=1, sticky='w')
         tk.Label(self.tab1, text="").grid(row=3, pady=4)
@@ -146,6 +145,7 @@ class tkinter:
         
         cv2.drawContours(img, self.contour1, -1, (0,255,0), 7)
         cv2.drawContours(img, [new_cont2], -1, (255,0,0), 7)
+
         fig, ax = plt.subplots()
         ax.axis('off')
         ax.imshow(img) 
