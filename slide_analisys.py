@@ -18,11 +18,11 @@ cursor = conn.cursor()
 
 WHITE_COLOR = 255
 #questi sono tutti valori in pixel
-PATTERN_MIN_DIMENSION = 5000  #campioni significativi hanno un numero di contorni maggiore di questa soglia
-PATTERN_FRAGMENT_MIN_DIMENSION = 500 #dimensione minima dei frammenti che ci interessano, tutto cio che e piu piccolo puo essere polvere o comunque come affermato dagli istologi irrilevante
-FRAGMENT_MAX_DISTANCE = 700 #campo che prendo in considerazione intorno a un pattern, in cui ci potrebbero essere frammenti interessanti
-LINE_BOUND = 0.005 #questo valore viene indicato come soglia dell'area di un contorno sotto la quale significa che abbiamo rilevato un contorno che non è altro che una linea retta, ovvero il bordo del coprivetrino
-NANOGPS_AREA = 1000000 #il NanoGPS viene fissato al vetrino con dello scotch, che andrà a prendere un area molto vasta del vetrino, sicuramente almeno magggiore di questa soglia
+PATTERN_FRAGMENT_MIN_DIMENSION = 100000 #dimensione minima dei frammenti che ci interessano, tutto cio che e piu piccolo puo essere polvere o comunque come affermato dagli istologi irrilevante
+FRAGMENT_MAX_DISTANCE = 1000 #campo che prendo in considerazione intorno a un pattern, in cui ci potrebbero essere frammenti interessanti
+LINE_BOUND = 0.005 #questo valore viene indicato come soglia della proporzione area/perimetro di un contorno sotto la quale significa che abbiamo rilevato un contorno che non è altro che una linea retta, ovvero il bordo del coprivetrino
+NANOGPS_AREA = 10000000 #il NanoGPS viene fissato al vetrino con dello scotch, che andrà a prendere un area molto vasta del vetrino, sicuramente almeno magggiore di questa soglia
+PATTERN_MINIMUM_AREA = 2000000 #minima dimensione dell'area di un campione significativo
 
 class GlassType(Enum):
     TWO_COLORED = 0
@@ -61,6 +61,10 @@ def main(path_img):
     if img is None:
         return -1
     
+    #plt.figure(figsize=[15,8])
+    #plt.subplot(); plt.axis('on'); plt.imshow(img, cmap="gray"); plt.title("Not colored")
+    #plt.show()
+    
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     #applico bitmap e un po di filtri per definire meglio i contorni
@@ -87,11 +91,12 @@ def main(path_img):
 
         if comp < LINE_BOUND: #soglia bassa che indica che abbiamo rilevato le linee del coprivetrino
             continue
-        elif len(approx)== 4 and cv2.isContourConvex(approx) and nanoGPS is None and area > NANOGPS_AREA:
+        elif len(approx)== 4 and cv2.isContourConvex(approx) and not nanoGPS and area > NANOGPS_AREA:
+            print(area)
             nanoGPS = True
             (xNano,yNano,wNano,hNano) = cv2.boundingRect(approx)
-        elif len(i) > PATTERN_MIN_DIMENSION and len(i)<bitmapImg.shape[1]:
-            filter_contours_gray.append(approx)
+        elif area > PATTERN_MINIMUM_AREA:
+            filter_contours_gray.append(i)
 
     prova =  np.zeros(bitmapImg.shape, dtype=np.uint8)
     prova = cv2.drawContours(prova, filter_contours_gray, -1, 255, -1)
@@ -111,37 +116,70 @@ def main(path_img):
     result = cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)
     colored_contour = None
     
+    filter_contours = []
     #controllo se c'è campione colorato
     if not np.mean(result) >= WHITE_COLOR: 
         
         _, bitmapImgCol = cv2.threshold(result, 127, 255, cv2.THRESH_BINARY_INV)
-        contours, _ = cv2.findContours(bitmapImgCol, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        filter_contours = []
-        for i in contours:
-            if len(i) > PATTERN_MIN_DIMENSION:
+        contoursColored, _ = cv2.findContours(bitmapImgCol, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        for i in contoursColored:
+            area = cv2.contourArea(i)
+            if area > PATTERN_MINIMUM_AREA:
                 filter_contours.append(i)
         
-        while len(filter_contours) > 2:
-            filter_contours = []
-            bitmapImgCol = cv2.blur(bitmapImgCol, (17,17))
-            contours, _ = cv2.findContours(bitmapImgCol, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            for i in contours:
-                if len(i) > PATTERN_MIN_DIMENSION:
-                    filter_contours.append(i)
+        final_contours = [[] for _ in filter_contours]
+        idx = 0
+        for i in contoursColored:
+            idx = 0
+            for j in filter_contours:
+                if contour_distance(i, j) < FRAGMENT_MAX_DISTANCE:
+                    final_contours[idx].append(i)
+                    break
+                idx += 1
 
-        print(len(filter_contours))        
-        if len(filter_contours)==2:
+        final_img = [[] for _ in final_contours]
+        idx = 0
+        for i in final_contours:
+            final_img[idx] = np.zeros(bitmapImgCol.shape, dtype=np.uint8)
+            final_img[idx] = cv2.drawContours(final_img[idx], i, -1, 255, -1)
+            idx += 1
+
+        for idx in range(len(final_contours)):
+            while len(final_contours[idx]) > 1:
+                
+                square = (13, 13) #area considerata per filtrare i pixel
+                final_img[idx] = define_contour(final_img[idx], square)
+                #plt.figure(figsize=[15,8])
+                #plt.subplot(); plt.axis('on'); plt.imshow(final_img[idx], cmap="gray"); plt.title("Not colored")
+                #plt.show()
+                contours, _ = cv2.findContours(final_img[idx], cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                filter_contours = []
+                for i in contours:
+                    area = cv2.contourArea(i)
+                    if area > PATTERN_FRAGMENT_MIN_DIMENSION:
+                        filter_contours.append(i)
+                
+                if len(filter_contours) == 0:
+                    print("Contorni troppo poco definiti")
+                    return -1
+                final_contours[idx] = filter_contours 
+
+        print(len(final_contours))        
+        if len(final_contours)==2:
             glass = GlassType.TWO_COLORED
-        elif len(filter_contours)==1:
+            filter_contours_gray = []
+            filter_contours_gray.append(final_contours[0][0])
+            filter_contours_gray.append(final_contours[1][0])
+        elif len(final_contours)==1:
             glass = GlassType.ONE_COLORED
-            colored_contour = filter_contours[0][:, 0, 0].min()
-        elif len(filter_contours) > 2:
+            colored_contour = final_contours[0][0][:, 0, 0].min()
+        elif len(final_contours) > 2:
             print("Errore nella rilevazione degli oggetti")
             return -1
         bitmapImgCol = None
 
     result = None
-    img = None
     left = False
     
     #in base ai risultati definisco il tipo di vetrino che ho trovato
@@ -151,12 +189,15 @@ def main(path_img):
         x_min2 = filter_contours_gray[1][:, 0, 0].min()
         if (x_min1 - colored_contour) < (x_min2 - colored_contour):
             left = True
+            filter_contours_gray[0] = final_contours[0]
+        else:
+            filter_contours_gray[1] = final_contours[0]
     elif len(filter_contours_gray) == 2 and glass == "EMPTY":
         glass = GlassType.TWO_WHITE
     elif len(filter_contours_gray) == 1 and glass == "EMPTY":
         glass = GlassType.ONE_WHITE
     elif len(filter_contours_gray) > 2:
-        print("Errore nella rilevazione dei contorni")
+        print("Errore nella rilevazione dei contorni, rumore troppo elevato")
         return -1
     elif len(filter_contours_gray) == 0:
         print("Vetrino vuoto o campione troppo frammentato")
@@ -164,53 +205,24 @@ def main(path_img):
 
     #aggiungo ai contorni dei campioni(ovvero quelli piu grandi) altri contorni a loro vicini che potrebbero
     #sempre fare parte del campione ma essere leggermente staccati per via del taglio oppure fattori di rumore
-    final_contours = [[] for _ in filter_contours_gray]
-    for i in contours:
-        idx = 0
-        for j in filter_contours_gray:
-            if contour_distance(i, j) < FRAGMENT_MAX_DISTANCE:
-                final_contours[idx].append(i)
-                break
-            idx += 1
 
-    #contours_img = np.zeros(bitmapImg.shape, dtype=np.uint8)
-    #contours_img = cv2.drawContours(contours_img, final_contours, -1, 255, -1)
-
-    final_img = [[] for _ in final_contours]
+    img = np.zeros(img.shape, dtype=np.uint8)
+    approx_contours = []
+    centr = []
+    for idx in range(len(filter_contours_gray)):
+        approx_contours.append(cv2.approxPolyDP(filter_contours_gray[idx], 5, True))
+        centr.append(compute_center([approx_contours[idx]]))
+        img = cv2.drawContours(img, filter_contours_gray[idx], -1, 255, 7)
+    
+    final_img = [[] for _ in filter_contours_gray]
     idx = 0
-    for i in final_contours:
-
+    for i in filter_contours_gray:
         final_img[idx] = np.zeros(bitmapImg.shape, dtype=np.uint8)
         final_img[idx] = cv2.drawContours(final_img[idx], i, -1, 255, -1)
         idx += 1
-
-    for idx in range(len(final_contours)):
-        while len(final_contours[idx]) > 1:
-
-            square = (13, 13) #area considerata per filtrare i pixel
-            final_img[idx] = define_contour(final_img[idx], square)
-        
-            contours, _ = cv2.findContours(final_img[idx], cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-            filter_contours = []
-            for cnt in contours:
-                if(len(cnt) > PATTERN_FRAGMENT_MIN_DIMENSION):
-                    filter_contours.append(cnt)
-
-            if len(filter_contours) == 0:
-                print("Contorni troppo poco definiti")
-                return -1
-            final_contours[idx] = filter_contours 
-
-    approx_contours = []
-    centr = []
-    for idx in range(len(final_contours)):
-        approx_contours.append(cv2.approxPolyDP(final_contours[idx][0], 5, True))
-        centr.append(compute_center([approx_contours[idx]]))
-
-    img = np.zeros(final_img[0].shape, dtype=np.uint8)
-    img = cv2.drawContours(img, final_contours[0], -1, 255, 7)
-    img = cv2.drawContours(img, final_contours[1], -1, 255, 7)
+    #plt.figure(figsize=[15,8])
+    #plt.subplot(); plt.axis('on'); plt.imshow(img, cmap="gray"); plt.title("Not colored")
+    #plt.show()
 
     parent_folder = os.path.dirname(path_img)
     basename = os.path.basename(path_img)
@@ -290,6 +302,7 @@ def contour_distance(c1, c2):
 
 #trova il centroide usando la media pesata dei centroidi dei diversi contour
 def compute_center(contour):
+    
     M = []
     for i in contour:
         M.append(cv2.moments(i))
@@ -305,7 +318,7 @@ def compute_center(contour):
             cx_total += cx * m["m00"]
             cy_total += cy * m["m00"]
             area_total += m["m00"]
-
+    
     if area_total > 0:
         cx_avg = cx_total / area_total
         cy_avg = cy_total / area_total

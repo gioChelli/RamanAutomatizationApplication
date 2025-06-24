@@ -251,6 +251,13 @@ def main(img1, img2): #i due argomenti sono le immagini dei vetrini
 
     if(filter_contours1 == -1 or filter_contours2 == -1):
         return -1
+    
+    #img1 = np.zeros(img1.shape, dtype=np.uint8)
+    #img1 = cv2.drawContours(img1, filter_contours1, -1, 255, 14)
+    #img2 = np.zeros(img2.shape, dtype=np.uint8)
+    #img2 = cv2.drawContours(img2, filter_contours1, -1, 255, 14)
+
+    #match_ORB([img1, img2])
    
     M1 = cv2.moments(filter_contours1[0])
 
@@ -311,6 +318,30 @@ def main(img1, img2): #i due argomenti sono le immagini dei vetrini
     #plt.show()
 
     return
+
+def match_ORB(final_img):
+    kpORB = [[] for _ in final_img]
+    desORB = [[] for _ in final_img]
+
+    idx = 0
+    for i in final_img: 
+        kpORB[idx], desORB[idx] = compute_ORB_keypoints(i)
+        idx += 1
+
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+    matches2 = bf.match(desORB[0],desORB[1])
+
+    matches2 = sorted(matches2, key = lambda x:x.distance)
+    img4 = cv2.drawMatches(final_img[0],kpORB[0],final_img[1],kpORB[1],matches2,None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+
+    plt.imshow(img4),plt.show()
+    cv2.imwrite("match_ORB.jpg", img4)
+
+def compute_ORB_keypoints(img):
+    orb = cv2.ORB_create()
+    kp, des = orb.detectAndCompute(img,None)
+    return kp, des
+
 
 def onlyPurple(img):
 

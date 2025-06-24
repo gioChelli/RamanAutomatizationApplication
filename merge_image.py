@@ -3,7 +3,7 @@ import os
 import os.path
 import sys
 
-def main(dir):
+def main(dir, imgName):
 
     actual_dir = os.getcwd()
     new_dir = os.path.join(actual_dir, dir)
@@ -48,12 +48,16 @@ def main(dir):
             col = 0
             row += 1
     
-    full_path = os.path.join(new_dir, "img_unita.jpg") # questo da inserire come iperparametro da dare nel file di configurazione di LabSpec6
-    new_img.save(full_path)
+    full_path = os.path.join(new_dir, imgName + ".jpg") # questo da inserire come iperparametro da dare nel file di configurazione di LabSpec6
+    with open(full_path, "wb") as f:
+        new_img.save(f, format="JPEG")  
+        f.flush()
+        os.fsync(f.fileno())
+
     return 0
 
 
-if len(sys.argv) == 2:
-    main(sys.argv[1]) #qua probabilmente inserire altro parametro che mi posso far dare a inizio acquisizione
+if len(sys.argv) == 3:
+    main(sys.argv[1], sys.argv[2])
 else:
     print("Uso:", sys.argv[0], "nome_directory")

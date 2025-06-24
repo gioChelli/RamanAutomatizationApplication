@@ -1,19 +1,34 @@
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, File, WebSocket, WebSocketDisconnect, Request
 import uvicorn
 from pydantic import BaseModel
 from enum import Enum
 import numpy as np
 import cv2
-import matplotlib.pyplot as plt
-from PIL import Image
 import math
 import os
 import os.path
 import subprocess
+#import threading
+import redis
+import asyncio
+import base64
+from redlock import Redlock
+import time
+from fastapi.responses import FileResponse
+
+dlm = Redlock([{"host": "localhost", "port": 6379, "db": 0}]) #metto una lock sulla porta 6379 del localhost, che è dove gira Redis
+
+#imgReady = threading.Condition()
+r = redis.Redis()
+r.set("raman_state", "0")
+r.set("operation_client", "0")
+r.set("requestAval", "0")
+r.set("acquisitionEnded", "0")
+r.set("acquisitionState", "None")
 
 WHITE_COLOR = 255
 EDGE_MIN_PIXEL_DIMENSION = 20
-PATH =r"C:\\Users\Giorgio"
+PATH =r"C:\\Users\Giorgio\cartellaProva" #da file di configurazione
 
 class Pattern:
     def __init__(self):
@@ -21,7 +36,7 @@ class Pattern:
         self.startColumnPattern = -1
         self.endRowPattern = -1
         self.endColumnPattern = -1
-
+        
 class Status:
     _instance = None
 
@@ -140,50 +155,6 @@ def searchEdge(img):
             'result': stato.name,
             'row': -1
         }
-    
-def mergeImages(path):
-    
-    listImg = sorted(os.listdir(path), key=lambda name: (int(name.split("_")[1].split(".")[0]), int(name.split("_")[0])))
-    firstImg = listImg[0]
-    START_Y = int(firstImg.split("_")[0])
-    START_X = int(firstImg.split("_")[1].split(".")[0])
-    
-    NUM_X = 0
-    NUM_Y = 0
-    for im in listImg:
-        y = int(im.split("_")[0])
-        x = int(im.split("_")[1].split(".")[0])
-        if x == START_X:
-            NUM_X += 1
-        if y == START_Y:
-            NUM_Y += 1
-            
-    new_path = os.path.join(path, firstImg)
-    width, height = Image.open(new_path).size
-    totalWidth = width * NUM_X 
-    totalHeight = height * NUM_Y
-
-    new_img = Image.new("RGB", (totalWidth, totalHeight), "white")    # "white" e' il colore di sfondo
-    
-    row = 0
-    col = 0
-    for file in listImg:
-        imgPath = os.path.join(path, file)
-        img = Image.open(imgPath)
-
-        x_idx = col * width
-        y_idx = row * height
-        new_img.paste(img, (x_idx, y_idx))
-
-        col += 1
-        if col == NUM_X:
-            col = 0
-            row += 1
-    
-    full_path = os.path.join(path, "img_unita.jpg")
-    new_img.save(full_path)
-
-    return full_path
 
 #metodo che trova il pixel esatto di inizio del vetrino e fine del vetrino
 #una volta trovato l'inizio del vetrino il motore di LabSpec6 si deve spostare in fondo e 
@@ -242,11 +213,10 @@ async def patternImage(file : UploadFile = File(...)):
     #plt.show()
 
     stato = ResultImageProcessing.EMPTY
-    return { 
-        'result': stato.name,
-        'row' : -1,
-        'column': -1
+    return {
+        "status": "OK"
     }
+
     
 @app.patch("/startAcquisition", status_code=200)
 async def startAcquisition():
@@ -259,11 +229,93 @@ async def startAcquisition():
 
 @app.patch("/endAcquisition", status_code=200)
 async def endAcquisition():
-
-    subprocess.run(["python", "merge_immage.py", PATH])
+    r.set("acquisitionState", "Started")
+    process = subprocess.run(["python", r"D:\Giorgio\unipi\Tirocinio\VBScript\merge_image.py", PATH, "mosaicQualcosa"]) #parametro da ottenere da client  
+    if process.returncode == 0:
+        r.set("acquisitionState", "Ended")
+        r.set("pathAcquisition", "mosaicQualcosa.jpg") 
+    else:
+        r.set("acquisitionState", "Error")
 
     return {"status": "done"}
+
+@app.websocket("/stateWs")
+async def receiveState(websocket: WebSocket):
+    client = r.get("operation_client")
+    if client.decode() == "1":
+        print("client già connesso")
+        return
+    await websocket.accept()
+    print("connessione accettata")
+    r.set("operation_client", 1)
+
+    while True:
+        state = r.get("raman_state")
+        print(state.decode())
+        try:
+            msg = await asyncio.wait_for(websocket.receive_text(), timeout=5.0)
+        except asyncio.TimeoutError:
+            msg = None
+        except WebSocketDisconnect:
+            r.set("operation_client", "0")
+            break
+        if state.decode() == "0":
+            await websocket.send_text("Disconnected")
+
+        operationState = r.get("acquisitionState")
+        if operationState != "None":
+            if operationState.decode() == "Error":
+                await websocket.send_text("Error")  
+                r.set("acquisitionState", "None")
+            elif operationState.decode() == "Ended":
+                path = r.get("pathAcquisition")
+                path = path.decode()
+                
+                await websocket.send_text(path)  
+                r.set("acquisitionState", "None")
+
+        if msg == "acquisition":
+            r.set("requestAval", "1")
+            r.set("operation_client", "1")
+            r.set("operationType", "acquisition")
+        else:
+            try:
+                if state.decode() == "1":
+                    await websocket.send_text("Connected")
+            except WebSocketDisconnect:
+                r.set("operation_client", "0")
+                break
+
+@app.get("/image/{filename}")
+async def get_image(filename: str):
+    file_path = os.path.join(PATH, filename)
+    if not os.path.exists(file_path):
+        print("File non trovato!")
+    return FileResponse(file_path, media_type="image/jpeg")
+
+@app.patch("/ramanConnection", status_code=200)
+async def ramanStatus(request:Request):
+    r.set("raman_state", "1")
+    print("LabSpec connesso")
+    requestAval = r.get("requestAval")
+    print(requestAval)
+    
+    while not requestAval.decode() == "1":
+        if await request.is_disconnected():
+            print("LabSpec disconnesso")
+            r.set("raman_state", "0")
+            return {"status": "Disconnected"}
+        await asyncio.sleep(0.2)  
+        requestAval = r.get("requestAval")
+
+    newRequest = r.get("operationType")
+    print(newRequest.decode())
+    r.set("requestAval", "0")
+    return {"status": newRequest.decode()}
+    
      
 #Start server with uvicorn
 if __name__ == "__main__":
-    uvicorn.run("server_scan_image:app", host="0.0.0.0", port=5500, reload=False, timeout_keep_alive=0, log_level="info")
+    #request = []
+    #image = None
+    uvicorn.run("server_scan_image:app", host="0.0.0.0", port=5500, reload=False, timeout_keep_alive=15, log_level="info", workers=2)
