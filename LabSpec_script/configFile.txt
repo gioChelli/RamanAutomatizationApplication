@@ -1,0 +1,10 @@
+#path salvare immagini della colonna 
+columnPath = C:\Users\RAMAN\Desktop\GiorgioChelliScripts\acquisition\colonne\acquisizione\
+#path dove salvare immagini da usare per comporre mosaic
+glassPath = C:\Users\RAMAN\Desktop\GiorgioChelliScripts\acquisition\pancreas2\
+#path dove salvare acquisizioni Raman
+ramanPath = C:\Users\RAMAN\Desktop\GiorgioChelliScripts\ramanAcquisition\
+#nome del server a cui connettersi
+serverName = 127.0.0.1
+#porta del server
+PORT = 5500

@@ -2,6 +2,7 @@ Option Explicit
 Dim serverName, PORT
 Dim startY, endY
 Dim ErrorConnection
+ErrorConnection = False
 serverName = "127.0.0.1"
 PORT = "5500"
 
@@ -13,12 +14,14 @@ Sub main
         If ErrorConnection = True Then
             Exit Sub
         End If
+        WScript.Sleep 10000
     Loop
     
 End Sub
 
 Sub AcquisitionProcess
     StartAcquisition
+    WScript.Echo "Inizio invio colonne" & ErrorConnection
     If ErrorConnection = True Then
         Exit Sub
     End If
@@ -29,6 +32,7 @@ Sub AcquisitionProcess
     endY = CDbl(SendColumn("end"))
     startY = 19689 'le sovrascrivo perche non ho le acquisizioni di colonna, comunque il metodo precedente funziona
     endY = 38549
+    WScript.Echo "Fine invio colonne " & ErrorConnection
     If ErrorConnection = True Then
         Exit Sub
     End If
@@ -45,7 +49,7 @@ End Sub
 Function SendColumn(order)
     Dim fso, folder, files, file
     Dim arrFiles()
-    Dim path : path = "D:\Giorgio\unipi\Tirocinio\VBScript\colonne\acquisizione1\"
+    Dim path : path = "C:\Users\RAMAN\Desktop\GiorgioChelliScripts\acquisition\colonne\acquisizione1\"        '"D:\Giorgio\unipi\Tirocinio\VBScript\colonne\acquisizione1\"
     Dim url : url = "http://127.0.0.1:5500/edgeImage"
     
     Set fso = CreateObject("Scripting.FileSystemObject")
@@ -105,17 +109,19 @@ End Function
 Sub SendImages 
     Dim fso, folder, files, file
     Dim arrFiles()
-    Dim path : path = "D:\Giorgio\unipi\Tirocinio\melanomaColorato\"
+    Dim path : path = "C:\Users\RAMAN\Desktop\GiorgioChelliScripts\acquisition\melanomaColorato\"     '"D:\Giorgio\unipi\Tirocinio\melanomaColorato\"
+    
     Dim url : url = "http://127.0.0.1:5500/patternImage"
     
     Set fso = CreateObject("Scripting.FileSystemObject")
     Set folder = fso.GetFolder(path)
     Set files = folder.Files
-
+    WScript.Echo "Inizio invio immagini"
     Dim count : count = 0
     For Each file In files
         count = count + 1
     Next
+    WScript.Echo "immagini" & count
 
     ReDim arrFiles(count - 1)
     Dim result, resultCode, i
@@ -131,26 +137,102 @@ Sub SendImages
 End Sub
 
 Sub RamanConnection
+    On Error Resume Next
     Dim o, result
     Set o = CreateObject("WinHttp.WinHttpRequest.5.1")
     o.Open "PATCH", "http://" & serverName & ":" & PORT & "/ramanConnection", False
-    o.SetTimeouts 10000, 10000, 10000, 200000                     '86400000
+    o.SetTimeouts 10000, 10000, 10000, 300000                     'rimane in attesa per 5 minuti
     o.Send
-    If o.Status <> "200" Then 
+
+    If Err.Number <> 0 Then 'se non ho ricevuto richieste in questi 5 minuti esco e col loop nel main partira poi una nuova connessione
+        Err.Clear
+        Exit Sub
+    End If
+
+    If o.Status <> 200 Then 
         ErrorConnection = True
     Else
         result = o.ResponseText
-        Dim kv, chiave, valore
-        kv = Split(result, ":")
-        chiave = Trim(Replace(Replace(kv(0), """", ""), Chr(34), ""))
-        valore = Trim(Replace(kv(1), """", ""))
-        valore = Replace(valore, "}", "")
-        WScript.Echo valore
-        Select Case valore
-            Case "acquisition"
-                AcquisitionProcess
-        End Select
+        WScript.Echo o.ResponseText
+        result = Replace(result, "{", "")
+        result = Replace(result, "}", "")
+        result = Replace(result, """", "") 
+        WScript.Echo result
+        Dim coppie, kv, chiave, valore
+        Dim x, y, scope, operation, i
+
+        coppie = Split(result, ",")
+
+        For i = 0 To UBound(coppie)
+
+            kv = Split(coppie(i), ":")
+    
+            If UBound(kv) >= 1 Then
+                chiave = Trim(kv(0))
+                valore = Trim(kv(1))
+                WScript.Echo "  Chiave: " & chiave
+                WScript.Echo "  Valore: " & valore
+
+                Select Case chiave
+                    Case "status"
+                        operation = valore
+                    Case "x"
+                        x = CDbl(valore)
+                    Case "y"
+                        y = CDbl(valore)
+                    Case "scope"
+                        scope = CDbl(valore)
+                End Select
+            Else
+                WScript.Echo "Errore nel parsing della coppia: " & coppie(i)
+            End If
+        Next
+
+        If operation = "acquisition" Then
+            AcquisitionProcess
+        ElseIf operation = "ramanAcquisition" Then
+            RamanAcquisition x, y 
+        Else
+            PatternAcquisition x, y, scope 
+        End If
     End If
+End Sub
+
+Function EncodeBase64(bytes)
+    Dim xml, node
+    Set xml = CreateObject("MSXML2.DOMDocument")
+    Set node = xml.CreateElement("b64")
+    node.DataType = "bin.base64"
+    node.nodeTypedValue = bytes
+    EncodeBase64 = Replace(node.Text, vbLf, "")
+End Function
+
+Sub RamanAcquisition(ByVal x, ByVal y)
+    WScript.Sleep 10000
+    Dim filepath : filepath = "C:\Users\RAMAN\Desktop\GiorgioChelliScripts\ramanAcquisition.txt"
+    Dim newName : newName = "raman_" & x & "_" & y & ".txt"
+
+    Dim stream, bytes
+    Set stream = CreateObject("ADODB.Stream")
+    stream.Type = 1 
+    stream.Open
+    stream.LoadFromFile filepath
+    bytes = stream.Read
+    stream.Close
+
+    Dim encoded
+    encoded = EncodeBase64(bytes)
+
+    Dim jsonBody
+    jsonBody = "{""filename"":""" & newName & """,""content"":""" & encoded & """}"
+
+    Dim http
+    Set http = CreateObject("MSXML2.XMLHTTP")
+    http.Open "PATCH", "http://" & serverName & ":" & PORT & "/endRamanAcquisition", False
+    http.setRequestHeader "Content-Type", "application/json"
+    http.send jsonBody
+
+    main
 End Sub
 
 Sub StartAcquisition
@@ -159,7 +241,6 @@ Sub StartAcquisition
     o.Open "PATCH", "http://" & serverName & ":" & PORT & "/startAcquisition", False
     o.Send
     If o.Status <> "200" Then 
-        LabSpec.Message "Connessione non riuscita", 0
         ErrorConnection = True
     End If
 End Sub
@@ -171,7 +252,6 @@ Sub EndAcquisition
     o.Open "PATCH", url,False
     o.Send
     If o.Status <> "200" Then 
-        LabSpec.Message "Connessione non riuscita", 0
         ErrorConnection = True
     End If
 
