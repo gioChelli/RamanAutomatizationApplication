@@ -1,0 +1,7 @@
+Operazioni:
+
+1) Normalizzazione dividendo per l'integrale, calcolato con metodo dei trapezoidi
+2) Rimozione linea di base (Improved Multi-polynomial fitting, grado polinomio: 5, 200 iterazioni) 
+3) Filtro Savitzky-Golay (grado polinomio: 3; finestra: 20 punti)
+4) Sottrazione segnale minimo
+5) Calcolata la media (in rosso) e la devizione standard (rosa salmone)
