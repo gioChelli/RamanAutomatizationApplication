@@ -1,26 +1,4 @@
-
-acqBianco1 -> contiene le immagini del vetrino con il 1 campione non colorato(non ho usato questo campione perché ho perso alcune foto, ma era del tutto uguale a quello che si può trovare in acqBianco2 che effettivamente ho usato)
-
-acqBianco1 -> contiene le immagini del vetrino con il 2 campione non colorato, quello utilizzato
-
-acqColorato1 -> contiene le immagini del vetrino con il 1 campione colorato, è quello che effettivamente ho usato per la comparazione perché più visibile
-
-acqColorato2 -> contiene le immagini del vetrino con il 2 campione colorato
-
-debugCol -> contiene le immagini di una colonna per vedere dove inizia il vetrino
-
-250516 -> contiene il codice sviluppato in laboratoria con lo script per acquisire un vetrino completamente 
-
-250516_column -> contiene lo script per acquisire tutta una colonna
-
-biancoMosaic -> immagine acquisita con mosaic di LabSpec6 del vetrino bianco 
-
-coloratoMosaic -> immagine acquisita con mosaic di LabSpec6 del vetrino colorato
-
-find_vetrino -> contiene l'algoritmo funzionante per indviduare la riga di inizio e fine del vetrino
-
-match_images -> algoritmo per matchare immagine colorata e immagine bianca, in sviluppo
-
-merge_image -> contiene l'algoritmo per unire le immagini acquisite col microscopio, funziona
-
-acqBianco1_unita, acqBianco2_unita, acqColorato1_unita, acqColorato2_unita -> contengono i mosaic creati con lo script merge_image
+In questa nuova versione del software è stato aggiornato l'utilizzo di percorsi relativi delle immagini di vetrini e tessuti a differenza dei percorsi assoluti utilizzati nella versione precedente.
+Inoltre sono stati inseriti controlli per eventuali modifiche al file system da parte dell'utente (ad esempio eliminazione di vetrini dalla cartella tessuti), in modo da mantenere il RamanDB sincronizzato
+e consistente con il file system. Infine il modulo del RamanServer è stato integrato nell'applicazione RamanApp e viene fatto partire automaticamente nel momento in cui quesa viene lanciata, infatti
+l'utilizzo del RamanServer è strettamente correllato a quello dell'applicazione.
