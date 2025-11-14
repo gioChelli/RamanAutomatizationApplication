@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import concurrent.futures
 import math
+import os
 
 #def search_distance_hull(final_contours, final_img):
 
@@ -82,8 +83,12 @@ def search_center(contour):
 def match_pattern(path_img1, path_img2, patt1, patt2):
     print(patt1, patt2)
     print(path_img1)
-    img1 = cv2.imread(path_img1, cv2.IMREAD_GRAYSCALE)
-    img2 = cv2.imread(path_img2, cv2.IMREAD_GRAYSCALE)
+
+    absFilpath1 = os.path.join(os.getcwd(), path_img1)
+    absFilpath2 = os.path.join(os.getcwd(), path_img2)
+
+    img1 = cv2.imread(absFilpath1, cv2.IMREAD_GRAYSCALE)
+    img2 = cv2.imread(absFilpath2, cv2.IMREAD_GRAYSCALE)
     if img1 is None or img2 is None:
         return -1
 

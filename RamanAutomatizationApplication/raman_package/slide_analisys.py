@@ -70,9 +70,9 @@ def slide_analisys(path_img):
         #else:
         contoursNoNanoGPS.append(i)
     
-    #mask = np.zeros(img.shape[:2], dtype=np.uint8)
-    #cv2.drawContours(mask, contoursNoNanoGPS, -1, 255, 5)
-    #cv2.imwrite("prova.jpg", mask)
+    mask = np.zeros(img.shape[:2], dtype=np.uint8)
+    cv2.drawContours(mask, contoursNoNanoGPS, -1, 255, 5)
+    cv2.imwrite("prova.jpg", mask)
     #plt.figure(figsize=[15,8])
     #plt.subplot(); plt.axis('on'); plt.imshow(mask, cmap="gray"); plt.title("Not colored")
     #plt.show()
@@ -161,13 +161,16 @@ def slide_analisys(path_img):
     #plt.figure(figsize=[15,8])
     #plt.subplot(); plt.axis('on'); plt.imshow(img, cmap="gray"); plt.title("Not colored")
     #plt.show()
-  
-    parent_folder = os.path.dirname(path_img)
+    
+    # ottengo il path relativo da usare come chiave primaria in DB, non controllo che sia nella directory dell'App 
+    # perché questo controllo è già fatto nell'applicazione principale al momento del caricamento del vetrino
+    relative_path = os.path.relpath(path_img, os.getcwd()) 
+    print(relative_path)
     basename = os.path.basename(path_img)
     
     #salvo le immagini dei contorni da usare poi per il matching con computeDistance
     name = os.path.splitext(basename)[0] + "_contour.jpg"
-    new_path = os.path.join(parent_folder, name)
+    new_path = os.path.join(os.path.dirname(relative_path), name) 
     cv2.imwrite(new_path, contour_img)
 
     if nanoGPS:
@@ -175,19 +178,19 @@ def slide_analisys(path_img):
                 INSERT INTO Slide(Filepath, NanoGPS, x_nano, y_nano, ContourPath)
                         VALUES (%s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE NanoGPS = VALUES(NanoGPS), x_nano = VALUES(x_nano), y_nano = VALUES(y_nano), ContourPath = VALUES(ContourPath)
-                       """, (path_img, nanoGPS, float(xNano), float(yNano), new_path))
+                       """, (relative_path, nanoGPS, float(xNano), float(yNano), new_path))
     else: 
         cursor.execute("""
             INSERT INTO Slide(Filepath, NanoGPS, ContourPath)
                     VALUES (%s, %s, %s)
                    ON DUPLICATE KEY UPDATE NanoGPS = VALUES(NanoGPS), ContourPath = VALUES(ContourPath)
-                       """, (path_img, nanoGPS, new_path))
+                       """, (relative_path, nanoGPS, new_path))
 
     cursor.execute("""
                 DELETE FROM Pattern WHERE Slide = %s
-                       """, (path_img,))
+                       """, (relative_path,))
     
-    dir = os.path.join(parent_folder, "Raman_Acquisition")
+    dir = os.path.join(os.path.dirname(relative_path), "Raman_Acquisition")
     os.makedirs(dir, exist_ok=True)
     
     for idx in range(len(final_img)):
@@ -210,7 +213,7 @@ def slide_analisys(path_img):
 
         patternImg = img[y_min:y_max, x_min:x_max]
         name = os.path.splitext(basename)[0] + "_pattern" + str(idx) + ".jpg"
-        pattern_path = os.path.join(parent_folder, name)
+        pattern_path = os.path.join(os.path.dirname(relative_path), name)
         cv2.imwrite(pattern_path, patternImg)
         print(x_min)
         offset_x_min = x_min - (x_min % PIXEL_IMG_x)
@@ -224,7 +227,7 @@ def slide_analisys(path_img):
             start_x = int(offset_x_min + (i * PIXEL_IMG_x)) 
             for j in range(num_col):
                 start_y = int(offset_y_min + (j * PIXEL_IMG_y)) 
-                dir = os.path.join(parent_folder, f"{start_x*MICRONx_x5//PIXEL_IMG_x}_{start_y*MICRONy_x5//PIXEL_IMG_y}")
+                dir = os.path.join(os.path.dirname(relative_path), f"{start_x*MICRONx_x5//PIXEL_IMG_x}_{start_y*MICRONy_x5//PIXEL_IMG_y}")
                 if os.path.exists(dir):
                     shutil.rmtree(dir) 
                 os.makedirs(dir)
@@ -240,7 +243,7 @@ def slide_analisys(path_img):
         cursor.execute("""
             INSERT INTO Pattern(Slide, x_min, y_min, x_max, y_max, x_centr, y_centr, Colored, images_tree)
                     VALUES ( %s,  %s, %s, %s, %s, %s, %s, %s, %s)
-                    """, (path_img, float(x_min), float(y_min), float(x_max), float(y_max), float(center[0]), float(center[1]), colored, json.dumps(jsonTree)))
+                    """, (relative_path, float(x_min), float(y_min), float(x_max), float(y_max), float(center[0]), float(center[1]), colored, json.dumps(jsonTree)))
 
     conn.commit()
     cursor.close()

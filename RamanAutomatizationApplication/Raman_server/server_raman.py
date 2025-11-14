@@ -17,6 +17,7 @@ from contextlib import asynccontextmanager
 import tempfile
 import zipfile
 import base64
+from .merge_image import main
 
 r = redis.Redis()
 r.set("raman_state", "0")
@@ -71,7 +72,8 @@ class Status:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    with open("config.json") as f:
+    config_path = os.path.join(os.path.dirname(__file__), 'config.json')
+    with open(config_path) as f:
         config = json.load(f)
         app.state.PATH = config["path"]
         app.state.PATH_RESOLUTION = config["path_resolution"]
@@ -259,12 +261,16 @@ async def startAcquisition():
 @app.patch("/endAcquisition", status_code=200)
 async def endAcquisition(request: Request):
     path = request.app.state.PATH
-    process = subprocess.run(["python", "merge_image.py", path, "mosaicQualcosa"]) #parametro da ottenere da client  
-    if process.returncode == 0:
+    merge = main(path, "mosaicQualcosa")
+    if merge == 0:
         r.set("acquisitionState", "Ended")
-        r.set("pathAcquisition", "mosaicQualcosa.jpg") 
-    else:
-        r.set("acquisitionState", "Error")
+        r.set("pathAcquisition", "mosaicQualcosa.jpg")
+    # process = subprocess.run(["python", "merge_image.py", path, "mosaicQualcosa"])  
+    # if process.returncode == 0:
+    #     r.set("acquisitionState", "Ended")
+    #     r.set("pathAcquisition", "mosaicQualcosa.jpg") 
+    # else:
+    #     r.set("acquisitionState", "Error")
 
     return {"status": "done"}
 
@@ -448,10 +454,13 @@ async def ramanStatus(request:Request):
         return {"status": "waiting"}
     
 #Start server with uvicorn
-if __name__ == "__main__":
-    with open('config.json') as f:
+#if __name__ == "__main__":
+def start_raman_server():
+
+    config_path = os.path.join(os.path.dirname(__file__), 'config.json')
+    with open(config_path) as f:
         config = json.load(f)
 
         HOST = config['host']
         PORT = config['port']
-    uvicorn.run("server_scan_image:app", host=HOST, port=PORT, reload=False, timeout_keep_alive=30, log_level="info", workers=1)
+    uvicorn.run(app, host=HOST, port=PORT, reload=False, timeout_keep_alive=30, log_level="info", workers=1)

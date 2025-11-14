@@ -20,6 +20,7 @@ from PIL import Image, ImageTk
 from .match_pattern import match_pattern
 from .slide_analisys import slide_analisys
 import zipfile
+import shutil
 
 Image.MAX_IMAGE_PIXELS = None #serve per disattivare limite di sicurezza per grandezza immagini di PIL
 MICRONx_x5 = 960
@@ -67,9 +68,26 @@ class ctkinter:
             Colored BOOLEAN NOT NULL,
             x10 BOOLEAN NOT NULL DEFAULT FALSE,
             images_tree JSON,                             
-            FOREIGN KEY (Slide) REFERENCES Slide(Filepath) 
+            FOREIGN KEY (Slide) REFERENCES Slide(Filepath) ON DELETE CASCADE
             )
         """)
+
+        #controllo se sono stati eliminati alcuni vetrini, in caso positivo li elimino anche dal DB
+        query = self.cursor.execute("SELECT * FROM Slide")
+        result = self.cursor.fetchall()
+            
+        if result:
+            for tex in result:
+                path = os.path.join(os.getcwd(), tex["Filepath"])
+                if not os.path.exists(path):
+                    self.cursor.execute(("DELETE FROM Slide WHERE Filepath = %s", (tex["Filepath"],)))
+                    self.conn.commit()
+
+        #creazione della directory in cui salvare i vetrini analizzati
+        
+        dirSample = os.path.join("tessuti")
+        if not os.path.exists(dirSample):
+            os.makedirs(dirSample)
 
         self.ctk = ctk.CTk()
         self.ctk.geometry("800x800")
@@ -210,13 +228,30 @@ class ctkinter:
         elif tab == "Acquisizione Raman":
             self.scroll3._parent_canvas.focus_set()
 
+    def stop_loop(self,loop):
+        # Recupera tutti i task ancora attivi
+        tasks = [t for t in asyncio.all_tasks(loop) if not t.done()]
+
+        for task in tasks:
+            task.cancel()  # cancella il task
+
+        async def shutdown():
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        fut = asyncio.run_coroutine_threadsafe(shutdown(), loop)
+
+        def stop_loop_when_done(_):
+            loop.stop()
+
+        fut.add_done_callback(stop_loop_when_done)
+
     #gestione della chiusura della finestra
-    def on_close(self):
+    def on_close(self,event=None):
         
         conn.close()
         self.stop_event.set()
         if self.loop and self.loop.is_running():
-            self.loop.call_soon_threadsafe(self.loop.stop)
+            self.stop_loop(self.loop)
         print("in chiusura")
         self.thread.join()
         print("non ce la fa")
@@ -371,8 +406,10 @@ class ctkinter:
                                             with self.lock:
                                                 dirname = os.path.dirname(self.filepath_var1.get())
                                                 extract_dir = os.path.join(dirname, folder) 
-                                                print(extract_dir)
-                                                os.makedirs(extract_dir, exist_ok=True)
+                                                
+                                                if os.path.exists(extract_dir):
+                                                    shutil.rmtree(extract_dir)
+                                                os.makedirs(extract_dir)
                                                 zip_ref.extractall(extract_dir)
                                                 for file_name in zip_ref.namelist():
                                                     full_path = os.path.join(extract_dir, file_name)
@@ -434,13 +471,15 @@ class ctkinter:
 
     #funzione per la selezione del vetrino da visualizzare
     def open_file(self):
-        filepath = filedialog.askopenfilename()  # Apri la finestra di dialogo per selezionare un file
+        dirSample = os.path.join(os.getcwd(), "tessuti")
+        self.filepath = filedialog.askopenfilename(initialdir=dirSample)  # Apri la finestra di dialogo per selezionare un file
 
-        if filepath:
+        if self.filepath and os.path.commonpath([dirSample, self.filepath]) == dirSample:    
+
             if self.info is not None:
                 self.info.grid_remove()
             try:
-                img = Image.open(filepath)
+                img = Image.open(self.filepath)
                 img.thumbnail((1000, 1000))  # Riduce mantenendo le proporzioni
             except Exception:
                 if self.labelAnalyxed is not None:
@@ -456,7 +495,8 @@ class ctkinter:
             #self.img1 = img
 
             actual_row = 5
-            self.cursor.execute("SELECT * FROM Slide WHERE Filepath = %s", (filepath,))
+            relative_path = os.path.relpath(self.filepath,  os.getcwd()) 
+            self.cursor.execute("SELECT * FROM Slide WHERE Filepath = %s", (relative_path,))
             result = self.cursor.fetchall()
             
             if result:
@@ -472,8 +512,10 @@ class ctkinter:
                 self.labelAnalyxed = ctk.CTkLabel(self.scroll1, text="Immagine non ancora analizzata")
                 self.labelAnalyxed.grid(row=actual_row, columnspan=4)
                 actual_row += 1
-                self.analisys = ctk.CTkButton(self.scroll1, command=lambda:self.start_analisys(filepath), text="Analizza")
+                self.analisys = ctk.CTkButton(self.scroll1, command=lambda:self.start_analisys(self.filepath), text="Analizza")
                 self.analisys.grid(row=actual_row, columnspan = 4, pady = 10)  
+        elif self.filepath:
+            messagebox.showerror("Errore", "Non puoi selezionare file fuori dalla cartella tessuti!")
 
     #avvio acquisizione vetrino
     def startAcquisition(self):
@@ -501,30 +543,34 @@ class ctkinter:
     
     #salvataggio di un nuovo vetrino
     def save(self,img):
-        self.filepath = filedialog.asksaveasfilename(defaultextension=".jpg", filetypes=[("JPEG files", "*.jpg")])
-        if self.filepath:
+        dirSample = os.path.join(os.getcwd(), "tessuti")
+        self.filepath = filedialog.asksaveasfilename(defaultextension=".jpg", filetypes=[("JPEG files", "*.jpg")], initialdir = dirSample)
+        if self.filepath and os.path.commonpath([dirSample, self.filepath]) == dirSample:
             img.save(self.filepath)
             self.analisys.configure(state='normal')
+        else: 
+            messagebox.showerror("Errore", "Non puoi selezionare file fuori dalla cartella tessuti!")
 
     #avvio dell'analisi
-    def start_analisys(self, path_img):
+    def start_analisys(self, filepath):
         self.analisys.configure(state="disabled")
         if self.matchSlide is not None:
             self.matchSlide.configure(state="disabled")
-        thread = threading.Thread(target=self.async_analisys, args=(path_img,))
+        thread = threading.Thread(target=self.async_analisys, args=(filepath,))
         thread.start()
     
-    def async_analisys(self, path_img):
-        slide_analisys(path_img)
-        self.ctk.after(0, self.update_analisys, path_img)
+    def async_analisys(self, filepath):
+        slide_analisys(filepath)
+        self.ctk.after(0, self.update_analisys, filepath)
     
     #funzione per aggiornamento database una volta terminata l'analisi
-    def update_analisys(self, path_img):
+    def update_analisys(self, filepath):
        
         self.cursor.close()
         self.cursor = conn.cursor(dictionary=True)
+        relative_path = os.path.relpath(filepath,  os.getcwd())
         while True:
-            self.cursor.execute("SELECT * FROM Slide WHERE Filepath = %s", (path_img,))
+            self.cursor.execute("SELECT * FROM Slide WHERE Filepath = %s", (relative_path,))
             result = self.cursor.fetchall()
             
             if len(result)>0:
@@ -576,7 +622,7 @@ class ctkinter:
             check.configure(state="disabled")
         actual_row += 1
 
-        self.analisys = ctk.CTkButton(self.info, command=lambda:self.start_analisys(result["Filepath"]), text="Analizza")
+        self.analisys = ctk.CTkButton(self.info, command=lambda:self.start_analisys(self.filepath), text="Analizza")
         self.analisys.grid(row=actual_row, column = 0, columnspan=4, pady = 10, sticky='e', padx=10)
         self.analisys.configure(state="normal")
         self.matchSlide = ctk.CTkButton(self.info, command=lambda:self.start_slide_match(result["ContourPath"], result["Filepath"]), text="Match campioni")
@@ -590,22 +636,24 @@ class ctkinter:
         ctk.CTkLabel(self.info, text=data).grid(row=actual_row, column=col+1, pady=2, padx=5)
     
     #per far partire il matching in quei vetrini dove ci sono 2 campioni
-    def start_slide_match(self, path_cnt, path_img):
+    def start_slide_match(self, path_cnt, filepath):
         self.img1 = path_cnt
         self.img2 = path_cnt
        
         self.notebook.select(self.frame2)
-        self.setPattern(path_img, 1)
-        self.setPattern(path_img, 2)
+        self.setPattern(filepath, 1)
+        self.setPattern(filepath, 2)
         self.check_img()
 
     #FUNZIONI CHE POSSONO ESSERE ATTIVATE NEL SECONDO NOTEBOOK PER IL MATCHING
 
     #funzione per prendere vetrino da file system
     def open_file_preview(self, idx):
-        filepath = filedialog.askopenfilename()
-        if filepath:
-            self.ctk.after(0, self.setPattern, filepath, idx)
+        dirSample = os.path.join(os.getcwd(), "tessuti")
+        filepath = filedialog.askopenfilename(initialdir=dirSample)  # Apri la finestra di dialogo per selezionare un file
+        if filepath and os.path.commonpath([dirSample, filepath]) == dirSample: 
+            relative_path = os.path.relpath(filepath,  os.getcwd())
+            self.ctk.after(0, self.setPattern, relative_path, idx)
 
     #settaggio di alcuni parametri per il matching attaverso accesso a database e definizione interfaccia
     def setPattern(self, filepath, idx):
@@ -637,7 +685,8 @@ class ctkinter:
                 messagebox.showerror("Errore", "Seleziona un campione naturale")
                 return
             try:
-                img = Image.open(filepath)
+                dirSample = os.path.join(os.getcwd(), filepath)
+                img = Image.open(dirSample)
                 img.thumbnail((250, 250))  # Riduce mantenendo le proporzioni
             except Exception:
                 if idx == 1:
@@ -684,14 +733,14 @@ class ctkinter:
             
             if idx == 1:
                 self.img1 = result[0]["ContourPath"]
-                self.saveImg1 = filepath.split(".")[0]
+                self.saveImg1 =  os.path.join(os.getcwd(), filepath.split(".")[0])
                 label.grid(row=2, column = 2)
                 self.filepath_var1 = ctk.StringVar()
                 self.filepath_var1.set(filepath)
                 self.label1.configure(textvariable=self.filepath_var1)
             else:
                 self.img2 =  result[0]["ContourPath"]
-                self.saveImg2 = filepath.split(".")[0]
+                self.saveImg2 =  os.path.join(os.getcwd(), filepath.split(".")[0])
                 label.grid(row=4, column=2)
                 self.filepath_var2 = ctk.StringVar()
                 self.filepath_var2.set(filepath)
@@ -1312,6 +1361,16 @@ class ctkinter:
         for i in range (self.start_x, self.end_x, stepX):
             for j in range(self.start_y, self.end_y, stepY):
                 with self.lock:
+                    if self.treeJson[f"{i}_{j}"]["child"] != []:
+                        children = self.treeJson[f"{i}_{j}"]["child"]
+
+                        sorted_children = sorted(children, key=extract_coords)
+                        for child in sorted_children:
+                            path = os.path.join(os.getcwd(), child["path"])
+                            if not os.path.exists(path):
+                                self.treeJson[f"{i}_{j}"]["child"] = []
+                                break
+                            
                     if self.treeJson[f"{i}_{j}"]["child"] == [] and not self.connAval:
                         messagebox.showinfo("Risoluzione", "Risoluzione non disponibile e impossibile avviare acquisizione")
                         return
@@ -1361,13 +1420,6 @@ class ctkinter:
                 pos_y = 0
 
                 children = self.treeJson[f"{i}_{j}"]["child"]
-
-                def extract_coords(child):
-                    filename = os.path.splitext(os.path.basename(child["path"]))[0]  
-                    parts = filename.split("_")
-                    x = int(parts[0])
-                    y = int(parts[1])
-                    return (x, y)
 
                 sorted_children = sorted(children, key=extract_coords)
                 for child in sorted_children:
@@ -1468,3 +1520,11 @@ def rotate_image_center(img, angle):
     rotated = cv2.warpAffine(img, rot_matrix, (bound_w, bound_h), flags=cv2.INTER_LINEAR)
 
     return rotated
+
+
+def extract_coords(child):
+    filename = os.path.splitext(os.path.basename(child["path"]))[0]  
+    parts = filename.split("_")
+    x = int(parts[0])
+    y = int(parts[1])
+    return (x, y)
