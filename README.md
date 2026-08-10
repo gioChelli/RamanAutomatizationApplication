@@ -41,3 +41,8 @@ fasa di analisi (necessaria per il matching) e sono quindi visibili le varie car
 Infine il file VBS dummy_LabSpec6 è lo script utilizzato per simulare una connessione al dispositivo LabSpec quando questo non era disponibile.
 Durante la fase di acquisizione di immagini è possibile inviare immagini acquisite precedentemente mentre per la fase di acquisizioni Raman si può utilizzare l'invio di
 un file txt che rappresenta acquisizione Raman già eseguita. Questo script può essere avviato da terminale utilizzando il comando wscript.
+
+In questa nuova versione del software è stato aggiornato l'utilizzo di percorsi relativi delle immagini di vetrini e tessuti a differenza dei percorsi assoluti utilizzati nella versione precedente.
+Inoltre sono stati inseriti controlli per eventuali modifiche al file system da parte dell'utente (ad esempio eliminazione di vetrini dalla cartella tessuti), in modo da mantenere il RamanDB sincronizzato
+e consistente con il file system. Infine il modulo del RamanServer è stato integrato nell'applicazione RamanApp e viene fatto partire automaticamente nel momento in cui quesa viene lanciata, infatti
+l'utilizzo del RamanServer è strettamente correllato a quello dell'applicazione.
