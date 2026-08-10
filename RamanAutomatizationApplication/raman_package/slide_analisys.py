@@ -72,7 +72,7 @@ def slide_analisys(path_img):
     
     mask = np.zeros(img.shape[:2], dtype=np.uint8)
     cv2.drawContours(mask, contoursNoNanoGPS, -1, 255, 5)
-    cv2.imwrite("prova.jpg", mask)
+    #cv2.imwrite("prova.jpg", mask)
     #plt.figure(figsize=[15,8])
     #plt.subplot(); plt.axis('on'); plt.imshow(mask, cmap="gray"); plt.title("Not colored")
     #plt.show()

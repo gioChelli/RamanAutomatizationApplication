@@ -173,7 +173,6 @@ def search_distance(rot, contour1, contour2, centr1, width, height):
     print("IoU:", iou)
 
     
-
     return distance, rot, iou
 
 #fine calcolo

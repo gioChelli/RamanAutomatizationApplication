@@ -80,8 +80,8 @@ class ctkinter:
             for tex in result:
                 path = os.path.join(os.getcwd(), tex["Filepath"])
                 if not os.path.exists(path):
-                    self.cursor.execute(("DELETE FROM Slide WHERE Filepath = %s", (tex["Filepath"],)))
-                    self.conn.commit()
+                    self.cursor.execute("DELETE FROM Slide WHERE Filepath = %s", (tex["Filepath"],))
+                    conn.commit()
 
         #creazione della directory in cui salvare i vetrini analizzati
         
@@ -91,8 +91,8 @@ class ctkinter:
 
         self.ctk = ctk.CTk()
         self.ctk.geometry("800x800")
-        self.ctk.title("Acquisizioni Raman automatizzate")
-        self.ctk.iconbitmap("ramanApplicationIcon.ico")
+        self.ctk.title("RamanApp")
+        self.ctk.iconbitmap("RamanApplicationIcon.ico")
         self.ctk.grid_rowconfigure(0, weight=1)
         self.ctk.grid_columnconfigure(0, weight=1)
 
